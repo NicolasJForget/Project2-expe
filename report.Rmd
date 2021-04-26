@@ -255,7 +255,7 @@ intr %>%
 ```
 
 
-# Just for information
+# Others
 
 Number of non-dominated points. There is a plot for each problem (ILP, PPP, UFLP) and number of objectives (3, 4, 5).
 Note : only instances with at least one congiguration solved is kept. Hence the number of non-dominated points may appear lower than it is in reality for the hardest instances.
