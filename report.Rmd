@@ -8,6 +8,7 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
+library(knitr)
 ```
 
 ## Preliminary tests
@@ -27,13 +28,14 @@ In this section, various configuration of the branch-and-bound are tested on eac
     + linear relaxation (`LP`). The linear relaxation is computed from scratch at each node.
     + warmstarted linear relaxation (`WLP`). At a given node, the computation of the linear relaxation is warmstarted using the linear relaxation of its father node.
     
+  * variable splitting value selection. Given a branching variable $x_i$, this describes how the algorithm chooses the value to branch on. This parameter is relevant only for problems with integer variables, as one can only branch on 0 and 1 in the binary case.
+    + median value (`med`). The median value of $x_i$ among the extreme points is chosen. The purpose behind this rule is to have more balanced tree.
+    + most often fractional value (`mofv`). The value $v \in \mathbb{Z}$ is chosen such that the number of extreme points of the lower bound set that have $x_i \in ]v,v+1[$ is the highest. If there is no decimal point, the `med` rule is called. The purpose behind this rule is to discard as much non-integer points as possible in both sub-problems created.
+    
 Other parameters :
 
   * variable index selection. This describes how the algorithm chooses the variable to split when performing branching on a node. Here, only one configuration is tested.
     + most often fractional. The variable that is the most often fractional among the extreme points of the lower bound set is chosen. In the binary case, if no variable is fractionnal, the one with the most variability (i.e. the most equally distributed between 0 and 1) is chosen. In the integer case, if no variable is fractional, the first free variable that has at least two different values is chosen. In all other cases, the first free variable is chosen. Same rule as in [FORGET20].
-    
-  * variable value selection. Given a branching variable $x_i$, this describes how the algorithm chooses the value to branch on. This parameter is relevant only for problems with integer variables, as one can only branch on 0 and 1 in the binary case.
-    + median value. The median value of $x_i$ among the extreme points is chosen.
 
 
 ```{r cars, echo=FALSE}
@@ -61,12 +63,12 @@ There is a plot for each lower bound set configuration (LP, WLP) and number of o
 ```{r, echo = FALSE}
 datPrelim %>%
   filter(pb == "ILP") %>%
-  group_by(p, configLB, configOB, configNodeSel) %>%
+  group_by(p, configLB, configOB, configNodeSel, configValSplit) %>%
   arrange(cpuTotal) %>%
   mutate(count = row_number()) %>%
     ggplot() +
     geom_step(aes(x = cpuTotal, y = count, color = configOB, linetype = configNodeSel)) +
-    facet_grid(vars(p), vars(configLB), scales = "free") +
+    facet_grid(vars(p), vars(configLB, configValSplit), scales = "free") +
     xlab("CPU time (in seconds)") + ylab("number of instances solved")
 
 
@@ -105,7 +107,7 @@ There is a plot for each lower bound set configuration (LP, WLP) and number of o
 ```{r, echo = FALSE}
 inter <- datPrelim %>%
   filter(pb == "PPP") %>%
-  group_by(p, configLB, configOB, configNodeSel) %>%
+  group_by(p, configLB, configOB, configNodeSel, configValSplit) %>%
   arrange(cpuTotal) %>%
   mutate(cr = row_number()) #%>%
 #    ggplot() +
@@ -115,11 +117,31 @@ inter <- datPrelim %>%
 inter %>%
   ggplot() +
   geom_step(aes(cpuTotal, cr, color=configOB, linetype=configNodeSel)) +
-  facet_grid(vars(p), vars(configLB), scales = "free") +
+  facet_grid(vars(p), vars(configLB, configValSplit), scales = "free") +
     xlab("CPU time (in seconds)") + ylab("number of instances solved")
 
 ```
 
+### Agregated results
+
+We consider that we have no information regarding the class of the instance.
+
+These are the agregated results that we dicussed last time, but since a new rule on variable value splitting is tested and one of the problem classes (UFLP) is binary, we have a difference in terms of the number of instances solved (UFLP was not solved with med). Thus it gives a weight to PPP and ILP (they are solved twice more and gives it more importance with respect to OB and node selection). So to interpret carefully.
+
+```{r, echo = FALSE}
+datPrelim %>%
+  group_by(p, configLB, configOB, configNodeSel, configValSplit) %>%
+  arrange(cpuTotal) %>%
+  mutate(count = row_number()) %>%
+    ggplot() +
+    geom_step(aes(x = cpuTotal, y = count, color = configOB, linetype = configNodeSel)) +
+    facet_grid(vars(p), vars(configLB, configValSplit), scales = "free") +
+    xlab("CPU time (in seconds)") + ylab("number of instances solved")
+
+
+```
+
+From now on, we will stick to breadth first and cone OB for $p = 3$; and breadth first and no OB for $p \geq 3$.
 
 ## How beneficial is it to warmstart the computation of the lower bound set?
 
@@ -127,22 +149,27 @@ Given a fixed number of objectives, how does warmstarting the LB set performs co
 
 There is a plot for each problem (ILP, PPP, UFLP) and number of objectives (3, 4, 5). Only the best configuration in terms of CPU time regarding node selection and objective branching is kept for each instance.
 
-```{r pressure, echo=FALSE}
+```{r, echo=FALSE}
 # from prelim 
 
-tst <- datPrelim %>% # tst is best config only LP and WLP for prelim expe
-  group_by(instance, configLB) %>%
+tst2 <- datPrelim %>% # tst is best config only LP and WLP for prelim expe
+  group_by(instance, configLB, configValSplit) %>%
   mutate(cpu = min(cpuTotal)) %>%
   filter(cpu == cpuTotal) %>%
   mutate(cpt = row_number()) %>%
   filter(cpt == 1)
+
+tst <- datPrelim %>%
+  filter((p==3 && configOB=="noOB" && configNodeSel=="breadth") || 
+           (p==4 && configOB=="noOB" && configNodeSel=="breadth") ||
+           (p==5 && configOB=="noOB" && configNodeSel=="breadth"))
   
 tst %>%
   group_by(pb, p, configLB) %>%
   arrange(cpuTotal) %>%
   mutate(count = row_number()) %>% 
     ggplot() +
-    geom_step( aes(x = cpuTotal, y = count,color = configLB, linetype = configLB) ) +
+    geom_step( aes(x = cpuTotal, y = count,color = configValSplit, linetype = configLB) ) +
     facet_wrap(vars(pb, p), scales = "free") +
     xlab("CPU time (in seconds)") + ylab("number of instances solved")
     #facet_grid(vars(pb), vars(p), scales = "free")
@@ -158,6 +185,129 @@ tst %>%
 #    facet_grid(vars(pb), vars(p), scales = "free")
 ```
 
+```{r, echo=FALSE}
+# With all instances aggregated:
+
+# from prelim 
+
+#tst2 <- datPrelim %>% # tst is best config only LP and WLP for prelim expe
+#  group_by(instance, configLB, configValSplit) %>%
+#  mutate(cpu = min(cpuTotal)) %>%
+#  filter(cpu == cpuTotal) %>%
+#  mutate(cpt = row_number()) %>%
+#  filter(cpt == 1)
+
+#tst <- datPrelim %>%
+#  filter((p==3 && configOB=="noOB" && configNodeSel=="breadth") || 
+#           (p==4 && configOB=="noOB" && configNodeSel=="breadth") ||
+#           (p==5 && configOB=="noOB" && configNodeSel=="breadth"))
+#  
+#tst %>%
+#  filter(pb != "UFLP") %>%
+#  group_by(p, configLB) %>%
+#  arrange(cpuTotal) %>%
+#  mutate(count = row_number()) %>% 
+#    ggplot() +
+#    geom_step( aes(x = cpuTotal, y = count,color = configValSplit, linetype = configLB) ) +
+#    facet_wrap(vars(p), scales = "free") +
+#    xlab("CPU time (in seconds)") + ylab("number of instances solved")
+#    #facet_grid(vars(pb), vars(p), scales = "free")
+  
+# from main expe
+
+#dat %>%
+#  group_by(pb, p, configLB) %>%
+#  arrange(cpuTotal) %>%
+#  mutate(count = row_number()) %>%
+#    ggplot() +
+#    geom_step( aes(x = cpuTotal, y = count, linetype = configLB) ) +
+#    facet_grid(vars(pb), vars(p), scales = "free")
+```
+
+How many instances were solved for each problem class, number of objectives and LB configuration?
+
+```{r, echo=FALSE}
+tb1 <- tst %>% # tst is best config only LP and WLP for prelim expe
+  ungroup() %>%
+  filter(configValSplit == "mofv") %>%
+  select(instance, configLB, solved, cpuTotal, nbLpSolved, nbNodes, pb, p) %>%
+  group_by(instance) %>%
+  pivot_wider(names_from = configLB, values_from = c(solved, cpuTotal, nbLpSolved, nbNodes))
+
+tb1 %>%
+  group_by(pb) %>%
+  summarise(count_solved_LP = sum(solved_LP), count_solved_WLP = sum(solved_WLP)) %>%
+  ungroup() %>%
+  pivot_longer(!pb, names_to = "configLB", values_to = "count") %>%
+    ggplot(aes(x = pb, y = count, fill = configLB)) +
+    geom_bar(stat = "identity", position = "dodge")
+```
+
+
+For the instances that were solved in both configurations, what is the average speed-up? In this table, we express how large the reduction of CPU time used is in the WLP configuration, compared to the LP configuration, expressed in percentages. For example, for the ILP instances with three objectives, the WLP configuration is in average $27.4\%$ faster compared to the LP configuration.
+
+```{r, echo=FALSE}
+#tb1 <- tst %>% # tst is best config only LP and WLP for prelim expe
+#  ungroup() %>%
+#  filter(configValSplit == "mofv") %>%
+#  select(instance, configLB, solved, cpuTotal, nbLpSolved, nbNodes, pb, p) %>%
+#  group_by(instance) %>%
+#  pivot_wider(names_from = configLB, values_from = c(solved, cpuTotal, nbLpSolved, nbNodes))
+  
+tb1 %>%
+  ungroup() %>%
+  filter(solved_LP == 1, solved_WLP == 1) %>%
+  group_by(pb, p) %>%
+  summarise(avgSpeedup = 100 * (mean(cpuTotal_LP) - mean(cpuTotal_WLP)) / mean(cpuTotal_LP)) %>%
+  ungroup() %>%
+  pivot_wider(names_from = p, values_from = avgSpeedup) %>%
+  kable()
+  
+
+```
+
+Another point of view for the same statistic: the LP configuration takes x times more CPU time than the WLP configuration.
+
+```{r, echo=FALSE}
+tb1 %>%
+  ungroup() %>%
+  filter(solved_LP == 1, solved_WLP == 1) %>%
+  group_by(pb, p) %>%
+  summarise(avgSpeedup = mean(cpuTotal_LP) / mean(cpuTotal_WLP)) %>%
+  ungroup() %>%
+  pivot_wider(names_from = p, values_from = avgSpeedup) %>%
+  kable()
+
+```
+
+How many calls to the single-objective LP solver were saved? In the LP config, we solved x times more LPs than in the WLP config.
+
+```{r, echo=FALSE}
+tb1 %>%
+  ungroup() %>%
+  filter(solved_LP == 1, solved_WLP == 1) %>%
+  group_by(pb, p) %>%
+  summarise(avgSpeedup = mean(nbLpSolved_LP) / mean(nbLpSolved_WLP)) %>%
+  ungroup() %>%
+  pivot_wider(names_from = p, values_from = avgSpeedup) %>%
+  kable()
+
+```
+
+For instances that were unsolved in both LB configurations, how many more nodes were explored by the WLP configuration compared to the LP configuration? Unsolved instances have the particularity that both configurations were stopped at the same point in time. Hence we can compare how much progress was made in both cases. It is relevant to compare the tree size here because in both LB configuration, the tree is the same (same LB computed so same branching decisions made). Small variation can appear if alternative pre-image exists for some points of some LB in the tree, but in practice it appears to be a few nodes of difference. Note that this statistic does not answer to "how faster" one configuration is compared to the other, because nodes can take more cpu time depending on how deep they are in the BB tree.
+Analysis: WLP configuration explored x times more nodes than LP configuration whithin the time limit (600 sec now, but 3600 are coming!).
+
+```{r, echo=FALSE}
+tb1 %>%
+  ungroup() %>%
+  filter(solved_LP == 0, solved_WLP == 0) %>%
+  group_by(pb, p) %>%
+  summarise(avgTreeSize = mean(nbNodes_WLP) / mean(nbNodes_LP)) %>%
+  ungroup() %>%
+  pivot_wider(names_from = p, values_from = avgTreeSize) %>%
+  kable()
+
+```
 
 ```{r, echo=FALSE}
 #What is the average speedup in function of the number of variables and the number of objective for each problem class?
@@ -224,26 +374,24 @@ tst %>%
 #  theme_publish()
 ```
 
-How many calls to Cplex are performed in average? There is a plot for each problem (ILP, PPP, UFLP) and number of objectives (3, 4, 5).
-
-Note : only instances with at least one solved configuration both in LP and WLP are kept. Futhermore, only the best configuration (in terms of cpu time) regarding node selection and objective branching is kept for each instance. Hence the number of calls to the LP solver may appear lower than it is in reality for the hardest instances.
 
 ```{r, echo=FALSE}
 
 # prelim expe
 
-intr <- tst %>%
-  group_by(instance) %>%
-  mutate(allSolved = min(solved)) %>%
-  filter(allSolved == 1)
+#intr <- tst %>%
+#  group_by(instance) %>%
+#  mutate(allSolved = min(solved)) %>%
+#  filter(allSolved == 1) %>%
+#  mutate(reductionRelative = 100 - 100*nbLpSolved/max(nbLpSolved))
 
-intr %>%
-  group_by(pb,p,n,configLB) %>%
-  summarise(avgLpSolved = mean(nbLpSolved)) %>%
-  ggplot() +
-  geom_line( aes(n,avgLpSolved,color=configLB,linetype = configLB) ) +
-  facet_wrap(vars(pb,p), scales = "free") +
-    xlab("number of variables (n)") + ylab("number of calls to the single-objective LP solver")
+#intr %>%
+#  group_by(pb,p,n,configLB) %>%
+#  summarise(avgLpSolved = mean(reductionRelative)) %>% # nbLpSolved
+#  ggplot() +
+#  geom_line( aes(n,avgLpSolved,color=configLB,linetype = configLB) ) +
+#  facet_wrap(vars(pb,p), scales = "free_x") +
+#    xlab("number of variables (n)") + ylab("relative reduction of calls to the single-objective LP solver")
 
 # main expe
 
@@ -272,7 +420,7 @@ datPrelim %>%
   filter(mini == cpuTotal) %>%
     ggplot() +
     geom_boxplot(aes(factor(n),YN, group = factor(n))) +
-    facet_wrap(vars(pb,p), scales = "free") +
+    facet_wrap(vars(pb,p), scales = "free_x") +
     xlab("number of variables (n)") + ylab("|YN|")
 
 #res <- dat %>%
@@ -284,4 +432,100 @@ datPrelim %>%
 #  geom_point( data = dat, aes(n,YN,col = factor(p)) ) +
 #    geom_line( aes(n,avgYn,col = factor(p)) )
 ```
+
+# Results without OB
+
+For node seletion. Aggregated results
+
+```{r, echo = FALSE}
+datPrelim %>%
+  filter(configOB == "noOB") %>%
+  group_by(p, configLB, configNodeSel) %>%
+  arrange(cpuTotal) %>%
+  mutate(count = row_number()) %>%
+    ggplot() +
+    geom_step(aes(x = cpuTotal, y = count, color = configNodeSel)) +
+    facet_grid(vars(p), vars(configLB), scales = "free") +
+    xlab("CPU time (in seconds)") + ylab("number of instances solved")
+
+
+```
+
+For warmstarting.
+
+```{r, echo=FALSE}
+# from prelim 
+
+datPrelim %>%
+  filter(configOB == "noOB") %>%
+  group_by(pb, p, configLB, configNodeSel) %>%
+  arrange(cpuTotal) %>%
+  mutate(count = row_number()) %>% 
+    ggplot() +
+    geom_step( aes(x = cpuTotal, y = count,color = configNodeSel, linetype = configLB) ) +
+    facet_wrap(vars(pb, p), scales = "free") +
+    xlab("CPU time (in seconds)") + ylab("number of instances solved")
+    #facet_grid(vars(pb), vars(p), scales = "free")
+  
+# from main expe
+
+#dat %>%
+#  group_by(pb, p, configLB) %>%
+#  arrange(cpuTotal) %>%
+#  mutate(count = row_number()) %>%
+#    ggplot() +
+#    geom_step( aes(x = cpuTotal, y = count, linetype = configLB) ) +
+#    facet_grid(vars(pb), vars(p), scales = "free")
+```
+
+# Further preliminary study on OB
+
+## ILP
+
+```{r, echo = FALSE}
+datPrelim %>%
+  filter(pb == "ILP") %>%
+  group_by(p, configLB, configOB, configNodeSel) %>%
+  arrange(cpuTotal) %>%
+  mutate(count = row_number()) %>%
+    ggplot() +
+    geom_step(aes(x = cpuTotal, y = count, color = configNodeSel, linetype = configLB)) +
+    facet_grid(vars(p), vars(configOB), scales = "free") +
+    xlab("CPU time (in seconds)") + ylab("number of instances solved")
+
+
+```
+
+## UFLP
+
+```{r, echo = FALSE}
+datPrelim %>%
+  filter(pb == "UFLP") %>%
+  group_by(p, configLB, configOB, configNodeSel) %>%
+  arrange(cpuTotal) %>%
+  mutate(count = row_number()) %>%
+    ggplot() +
+    geom_step(aes(x = cpuTotal, y = count, color = configNodeSel, linetype = configLB)) +
+    facet_grid(vars(p), vars(configOB), scales = "free") +
+    xlab("CPU time (in seconds)") + ylab("number of instances solved")
+
+
+```
+
+## PPP
+
+```{r, echo = FALSE}
+datPrelim %>%
+  filter(pb == "PPP") %>%
+  group_by(p, configLB, configOB, configNodeSel) %>%
+  arrange(cpuTotal) %>%
+  mutate(count = row_number()) %>%
+    ggplot() +
+    geom_step(aes(x = cpuTotal, y = count, color = configNodeSel, linetype = configLB)) +
+    facet_grid(vars(p), vars(configOB), scales = "free") +
+    xlab("CPU time (in seconds)") + ylab("number of instances solved")
+
+
+```
+
 
