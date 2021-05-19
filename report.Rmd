@@ -41,6 +41,7 @@ Other parameters :
 ```{r cars, echo=FALSE}
 #dat <- read.csv("results.csv")
 datPrelim <- read.csv("resultsPrelim.csv")
+datMain <- read.csv("resultsMain.csv")
 
 #dat <- dat %>%
 #  mutate(pb = strsplit( strsplit(instance, "_")[[1]][1] , "-" )[[1]][2])
@@ -52,6 +53,14 @@ datPrelim <- datPrelim %>%
 datPrelim <- datPrelim %>%
   group_by(instance, configLB, configNodeSel, configOB) %>%
   mutate(cpuTotal = min(cpuTotal,600))
+
+datMain <- datMain %>%
+  group_by(instance, configLB, configNodeSel, configOB) %>%
+  mutate(pb = strsplit( strsplit(instance, "_")[[1]][1] , "-" )[[1]][2])
+
+datMain <- datMain %>%
+  group_by(instance, configLB, configNodeSel, configOB) %>%
+  mutate(cpuTotal = min(cpuTotal,3600))
 ```
 
 ### Integer Linear Programs (Kirlik and Sayin, 2014)
@@ -159,10 +168,12 @@ tst2 <- datPrelim %>% # tst is best config only LP and WLP for prelim expe
   mutate(cpt = row_number()) %>%
   filter(cpt == 1)
 
-tst <- datPrelim %>%
+tst3 <- datPrelim %>%
   filter((p==3 && configOB=="noOB" && configNodeSel=="breadth") || 
            (p==4 && configOB=="noOB" && configNodeSel=="breadth") ||
            (p==5 && configOB=="noOB" && configNodeSel=="breadth"))
+
+tst <- datMain
   
 tst %>%
   group_by(pb, p, configLB) %>%
